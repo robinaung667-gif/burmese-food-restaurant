@@ -2,7 +2,20 @@ const reserveButton = document.querySelector('.reserve-button');
 const reservationForm = document.querySelector('#reserve');
 const faloodaImage = document.querySelector('img[alt^="Colorful chilled falooda"]');
 const reservationStorageKey = 'kaungSettReservations';
+const supabaseUrl = 'https://opqhpseenlwunlrnkdwf.supabase.co';
+const supabasePublishableKey = 'sb_publishable_hsIFeLuytJSZM8w-ksTjaw_gua7wD6w';
+const supabaseHeaders = {
+  apikey: supabasePublishableKey,
+  Authorization: `Bearer ${supabasePublishableKey}`,
+  'Content-Type': 'application/json'
+};
 const escapeHTML = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
+const normalizeReservation = (reservation) => ({ ...reservation, submittedAt: reservation.submittedAt || reservation.created_at || new Date().toISOString() });
+const supabaseRequest = async (path, options = {}) => {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, { ...options, headers: { ...supabaseHeaders, ...options.headers } });
+  if (!response.ok) throw new Error(`Supabase request failed: ${response.status}`);
+  return response.status === 204 ? null : response.json();
+};
 const menuImages = {
   'Tea leaf salad': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Lahpet_thohk_%2820250315181751%29.jpg',
   'Ginger salad': 'Gingersalad.png',
@@ -139,8 +152,7 @@ if (reservationForm instanceof HTMLFormElement) {
       submittedAt: new Date().toISOString()
     };
     try {
-      const response = await fetch('/api/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reservation) });
-      if (!response.ok) throw new Error('Could not save reservation');
+      await supabaseRequest('reservations', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ name: reservation.name, date: reservation.date, time: reservation.time, guests: reservation.guests, status: reservation.status }) });
       message.textContent = 'Request received. We will call shortly to confirm your table.';
       reservationForm.reset();
     } catch (error) {
@@ -156,9 +168,8 @@ const reservationList = document.querySelector('#reservation-list');
 if (reservationList) {
   const getReservations = async () => {
     try {
-      const response = await fetch('/api/reservations');
-      if (!response.ok) throw new Error('Could not load reservations');
-      return { reservations: await response.json(), server: true };
+      const reservations = await supabaseRequest('reservations?select=*&order=created_at.desc');
+      return { reservations: reservations.map(normalizeReservation), server: true };
     } catch (error) {
       try {
         const response = await fetch(`reservations.json?refresh=${Date.now()}`);
@@ -183,8 +194,9 @@ if (reservationList) {
     if (!button || !card) return;
     try {
       const method = button.dataset.action === 'delete' ? 'DELETE' : 'PATCH';
-      const response = await fetch(`/api/reservations/${card.dataset.id}`, { method });
-      if (!response.ok) throw new Error('Could not update reservation');
+      const reservationId = encodeURIComponent(card.dataset.id);
+      const body = method === 'PATCH' ? JSON.stringify({ status: card.querySelector('.request-status').textContent === 'Confirmed' ? 'New' : 'Confirmed' }) : undefined;
+      await supabaseRequest(`reservations?id=eq.${reservationId}`, { method, headers: { Prefer: 'return=representation' }, body });
     } catch (error) {
       let reservations = JSON.parse(localStorage.getItem(reservationStorageKey) || '[]');
       if (button.dataset.action === 'delete') reservations = reservations.filter((reservation) => reservation.id !== card.dataset.id);
@@ -196,7 +208,7 @@ if (reservationList) {
 
   document.querySelector('#clear-reservations')?.addEventListener('click', async () => {
     if (window.confirm('Delete all reservation requests?')) {
-      try { await fetch('/api/reservations', { method: 'DELETE' }); } catch (error) { localStorage.removeItem(reservationStorageKey); }
+      try { await supabaseRequest('reservations?id=not.is.null', { method: 'DELETE' }); } catch (error) { localStorage.removeItem(reservationStorageKey); }
       renderReservations();
     }
   });
