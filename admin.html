@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Private Requests | Kaung Sett</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="inner-page admin-page">
+  <header class="site-header"><a class="brand" href="index.html"><span class="brand-mark">KS</span><span class="brand-copy"><strong>Kaung Sett</strong><small>PRIVATE VIEW</small></span></a><a class="reserve-button" href="visit.html">Public website <span>↗</span></a></header>
+  <main class="admin-shell">
+    <div class="admin-heading"><div><div class="section-kicker">Private workspace</div><h1>Table requests.</h1><p id="reservation-count">0 requests</p></div><div class="admin-actions"><button id="export-reservations" type="button">Export CSV</button><button id="clear-reservations" type="button">Clear all</button></div></div>
+    <section id="reservation-list" class="reservation-list" aria-live="polite"></section>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
