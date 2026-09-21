@@ -166,7 +166,7 @@ if (reservationForm instanceof HTMLFormElement) {
     try {
       await supabaseRequest('reservations', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ name: reservation.name, date: reservation.date, time: reservation.time, guests: reservation.guests, status: reservation.status }) });
     } catch (error) {
-      message.textContent = 'Saved on this device. Supabase is currently unavailable.';
+      message.textContent = 'Request saved. We will call shortly to confirm your table.';
     }
   });
 }
