@@ -14,7 +14,7 @@ const escapeHTML = (value) => String(value).replace(/[&<>"']/g, (character) => (
 const normalizeReservation = (reservation) => ({ ...reservation, submittedAt: reservation.submittedAt || reservation.created_at || new Date().toISOString() });
 const supabaseRequest = async (path, options = {}) => {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 2500);
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, { ...options, signal: controller.signal, headers: { ...supabaseHeaders, ...options.headers } });
     if (!response.ok) throw new Error(`Supabase request failed: ${response.status}`);
