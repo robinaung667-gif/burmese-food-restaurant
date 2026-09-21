@@ -4,6 +4,7 @@ const faloodaImage = document.querySelector('img[alt^="Colorful chilled falooda"
 const reservationStorageKey = 'kaungSettReservations';
 const supabaseUrl = 'https://opqhpseenlwunlrnkdwf.supabase.co';
 const supabasePublishableKey = 'sb_publishable_hsIFeLuytJSZM8w-ksTjaw_gua7wD6w';
+let loadedReservations = [];
 const supabaseHeaders = {
   apikey: supabasePublishableKey,
   Authorization: `Bearer ${supabasePublishableKey}`,
@@ -12,9 +13,15 @@ const supabaseHeaders = {
 const escapeHTML = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const normalizeReservation = (reservation) => ({ ...reservation, submittedAt: reservation.submittedAt || reservation.created_at || new Date().toISOString() });
 const supabaseRequest = async (path, options = {}) => {
-  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, { ...options, headers: { ...supabaseHeaders, ...options.headers } });
-  if (!response.ok) throw new Error(`Supabase request failed: ${response.status}`);
-  return response.status === 204 ? null : response.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, { ...options, signal: controller.signal, headers: { ...supabaseHeaders, ...options.headers } });
+    if (!response.ok) throw new Error(`Supabase request failed: ${response.status}`);
+    return response.status === 204 ? null : response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
 };
 const menuImages = {
   'Tea leaf salad': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Lahpet_thohk_%2820250315181751%29.jpg',
@@ -151,15 +158,15 @@ if (reservationForm instanceof HTMLFormElement) {
       status: 'New',
       submittedAt: new Date().toISOString()
     };
+    const reservations = JSON.parse(localStorage.getItem(reservationStorageKey) || '[]');
+    reservations.unshift(reservation);
+    localStorage.setItem(reservationStorageKey, JSON.stringify(reservations));
+    message.textContent = 'Request received. We will call shortly to confirm your table.';
+    reservationForm.reset();
     try {
       await supabaseRequest('reservations', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ name: reservation.name, date: reservation.date, time: reservation.time, guests: reservation.guests, status: reservation.status }) });
-      message.textContent = 'Request received. We will call shortly to confirm your table.';
-      reservationForm.reset();
     } catch (error) {
-      const reservations = JSON.parse(localStorage.getItem(reservationStorageKey) || '[]');
-      reservations.unshift(reservation);
-      localStorage.setItem(reservationStorageKey, JSON.stringify(reservations));
-      message.textContent = 'Saved on this device. Start the Kaung Sett server for private requests.';
+      message.textContent = 'Saved on this device. Supabase is currently unavailable.';
     }
   });
 }
@@ -168,24 +175,26 @@ const reservationList = document.querySelector('#reservation-list');
 if (reservationList) {
   const getReservations = async () => {
     try {
-      const reservations = await supabaseRequest('reservations?select=*&order=created_at.desc');
-      return { reservations: reservations.map(normalizeReservation), server: true };
+      const reservations = await supabaseRequest('reservations?select=*');
+      return { reservations: reservations.map(normalizeReservation).sort((first, second) => new Date(second.submittedAt) - new Date(first.submittedAt)), server: true };
     } catch (error) {
+      const connectionError = error.name === 'AbortError' ? 'Supabase connection timed out' : 'Supabase connection unavailable';
       try {
         const response = await fetch(`reservations.json?refresh=${Date.now()}`);
         if (!response.ok) throw new Error('Could not load reservation file');
-        return { reservations: await response.json(), server: false };
+        return { reservations: await response.json(), server: false, connectionError };
       } catch (fileError) {
-        return { reservations: JSON.parse(localStorage.getItem(reservationStorageKey) || '[]'), server: false };
+        return { reservations: JSON.parse(localStorage.getItem(reservationStorageKey) || '[]'), server: false, connectionError };
       }
     }
   };
 
   const renderReservations = async () => {
-    const { reservations, server } = await getReservations();
+    const { reservations, server, connectionError } = await getReservations();
+    loadedReservations = reservations;
     const count = document.querySelector('#reservation-count');
     if (count) count.textContent = `${reservations.length} request${reservations.length === 1 ? '' : 's'}${server ? '' : ' · device only'}`;
-    reservationList.innerHTML = reservations.length ? reservations.map((reservation) => `<article class="request-card" data-id="${escapeHTML(reservation.id)}"><div class="request-top"><span class="request-status ${reservation.status === 'Confirmed' ? 'is-confirmed' : ''}">${escapeHTML(reservation.status)}</span><time>${escapeHTML(new Date(reservation.submittedAt).toLocaleString())}</time></div><h2>${escapeHTML(reservation.name)}</h2><p>${escapeHTML(reservation.date)} · ${escapeHTML(reservation.time)} · ${escapeHTML(reservation.guests)}</p><div class="request-actions"><button type="button" data-action="confirm">${reservation.status === 'Confirmed' ? 'Mark new' : 'Confirm'}</button><button type="button" data-action="delete">Delete</button></div></article>`).join('') : '<div class="empty-state"><strong>No reservations yet</strong><span>New requests from the website will appear here.</span></div>';
+    reservationList.innerHTML = reservations.length ? reservations.map((reservation) => `<article class="request-card" data-id="${escapeHTML(reservation.id)}"><div class="request-top"><span class="request-status ${reservation.status === 'Confirmed' ? 'is-confirmed' : ''}">${escapeHTML(reservation.status)}</span><time>${escapeHTML(new Date(reservation.submittedAt).toLocaleString())}</time></div><h2>${escapeHTML(reservation.name)}</h2><p>${escapeHTML(reservation.date)} · ${escapeHTML(reservation.time)} · ${escapeHTML(reservation.guests)}</p><div class="request-actions"><button type="button" data-action="confirm">${reservation.status === 'Confirmed' ? 'Mark new' : 'Confirm'}</button><button type="button" data-action="delete">Delete</button></div></article>`).join('') : `<div class="empty-state"><strong>${escapeHTML(connectionError || 'No reservations yet')}</strong><span>${connectionError ? 'Check the Supabase project URL, key, and table policies.' : 'New requests from the website will appear here.'}</span></div>`;
   };
 
   reservationList.addEventListener('click', async (event) => {
@@ -214,8 +223,7 @@ if (reservationList) {
   });
 
   document.querySelector('#export-reservations')?.addEventListener('click', () => {
-    const reservations = JSON.parse(localStorage.getItem(reservationStorageKey) || '[]');
-    const csv = ['Name,Date,Time,Guests,Status,Submitted', ...reservations.map((reservation) => [reservation.name, reservation.date, reservation.time, reservation.guests, reservation.status, reservation.submittedAt].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\n');
+    const csv = ['Name,Date,Time,Guests,Status,Submitted', ...loadedReservations.map((reservation) => [reservation.name, reservation.date, reservation.time, reservation.guests, reservation.status, reservation.submittedAt].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\n');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     link.download = 'kaung-sett-reservations.csv';
